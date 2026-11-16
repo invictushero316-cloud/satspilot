@@ -1,0 +1,60 @@
+# SatsPilot local / hackathon demo stack
+# Usage:
+#   docker compose up --build
+#   # or: npm run demo  (wrapper scripts)
+#
+# App: http://localhost:3000
+# Demo login after seed: merchant.demo@satspilot.local / DemoMerchant1!
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-satspilot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-satspilot}
+      POSTGRES_DB: ${POSTGRES_DB:-satspilot}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - satspilot_pg:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U $${POSTGRES_USER:-satspilot} -d $${POSTGRES_DB:-satspilot}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      APP_ENV: ${APP_ENV:-demo}
+      ALLOW_DEMO_SEED: ${ALLOW_DEMO_SEED:-true}
+      RUN_DEMO_SEED: ${RUN_DEMO_SEED:-true}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-satspilot}:${POSTGRES_PASSWORD:-satspilot}@postgres:5432/${POSTGRES_DB:-satspilot}?schema=public
+      AUTH_SECRET: ${AUTH_SECRET:-dev-only-change-me-auth-secret-32b!!}
+      AUTH_URL: ${AUTH_URL:-http://localhost:3000}
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      WALLET_ENCRYPTION_KEY: ${WALLET_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      # Labeled demo Lightning path (not live mainnet). Override to nwc + real URI for live tests.
+      LIGHTNING_PROVIDER: ${LIGHTNING_PROVIDER:-mock}
+      AI_PROVIDER: ${AI_PROVIDER:-none}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-gpt-4o-mini}
+      NOSTR_RECEIPT_RELAY_URL: ${NOSTR_RECEIPT_RELAY_URL:-wss://relay.damus.io}
+      DEMO_SEED_PASSWORD: ${DEMO_SEED_PASSWORD:-DemoMerchant1!}
+
+volumes:
+  satspilot_pg:

@@ -1,0 +1,222 @@
+@import "tailwindcss";
+
+:root {
+  --radius: 0.75rem;
+  --background: #f4f6f9;
+  --foreground: #0b1f3a;
+  --card: #ffffff;
+  --primary: #0b1f3a;
+  --primary-foreground: #ffffff;
+  --muted: #e8eef5;
+  /* Darker muted text for WCAG AA contrast on surface (~4.6:1+) */
+  --muted-foreground: #4a5a6a;
+  --border: #dce3ec;
+  --success: #059669;
+  --success-soft: #ecfdf5;
+  --danger: #dc2626;
+  --ring: #0b1f3a;
+  --surface: #f4f6f9;
+  --surface-muted: #e8eef5;
+  --navy: #0b1f3a;
+  --navy-soft: #e7eef8;
+  --amber-ink: #7c4a12;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --shadow-soft: 0 1px 2px rgb(11 31 58 / 4%), 0 8px 24px rgb(11 31 58 / 5%);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-danger: var(--danger);
+  --color-ring: var(--ring);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-navy: var(--navy);
+  --color-navy-soft: var(--navy-soft);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: var(--font-sans-family);
+  --font-mono: var(--font-mono-family);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply h-full;
+  }
+
+  body {
+    @apply min-h-full text-navy antialiased;
+    font-family: var(--font-sans-family), ui-sans-serif, system-ui, sans-serif;
+    background-color: var(--surface);
+    background-image:
+      radial-gradient(1200px 600px at 10% -10%, rgb(11 31 58 / 7%), transparent 55%),
+      radial-gradient(900px 500px at 100% 0%, rgb(5 150 105 / 6%), transparent 50%),
+      linear-gradient(180deg, #f8fafc 0%, var(--surface) 40%, #eef2f7 100%);
+    background-attachment: fixed;
+  }
+
+  :focus-visible {
+    outline: 2px solid color-mix(in oklab, var(--navy) 45%, transparent);
+    outline-offset: 2px;
+  }
+
+  /* Prefer 44px+ touch targets on primary controls */
+  button,
+  a,
+  [role="button"] {
+    touch-action: manipulation;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--navy) 18%, white);
+  }
+}
+
+@layer utilities {
+  .app-atmosphere {
+    background-image:
+      radial-gradient(800px 400px at 0% 0%, rgb(11 31 58 / 6%), transparent 60%),
+      radial-gradient(600px 300px at 100% 0%, rgb(5 150 105 / 5%), transparent 55%);
+  }
+
+  .auth-atmosphere {
+    background-color: var(--surface);
+    background-image:
+      radial-gradient(900px 500px at 50% -20%, rgb(11 31 58 / 12%), transparent 60%),
+      radial-gradient(700px 400px at 100% 100%, rgb(5 150 105 / 8%), transparent 55%),
+      linear-gradient(165deg, #f8fafc 0%, #eef3f8 45%, #e7eef6 100%);
+  }
+
+  .animate-fade-up {
+    animation: fade-up 420ms var(--ease-out) both;
+  }
+
+  .animate-fade-in {
+    animation: fade-in 280ms var(--ease-out) both;
+  }
+
+  .animate-toast-in {
+    animation: toast-in 320ms var(--ease-out) both;
+  }
+
+  .stagger-1 {
+    animation-delay: 40ms;
+  }
+  .stagger-2 {
+    animation-delay: 80ms;
+  }
+  .stagger-3 {
+    animation-delay: 120ms;
+  }
+  .stagger-4 {
+    animation-delay: 160ms;
+  }
+  .stagger-5 {
+    animation-delay: 200ms;
+  }
+
+  .skeleton-shimmer {
+    background: linear-gradient(
+      90deg,
+      var(--surface-muted) 0%,
+      #f8fafc 45%,
+      var(--surface-muted) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.35s ease-in-out infinite;
+  }
+
+  .pressable {
+    transition:
+      transform 160ms var(--ease-out),
+      background-color 160ms var(--ease-out),
+      border-color 160ms var(--ease-out),
+      box-shadow 160ms var(--ease-out),
+      opacity 160ms var(--ease-out);
+  }
+
+  .pressable:active:not(:disabled) {
+    transform: translateY(1px) scale(0.985);
+  }
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-fade-in,
+  .animate-toast-in,
+  .skeleton-shimmer,
+  .pressable {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .pressable:active:not(:disabled) {
+    transform: none;
+  }
+}
+
+@utility sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}

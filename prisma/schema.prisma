@@ -1,0 +1,480 @@
+// SatsPilot Prisma schema
+// Money: integer minor units only. Sats/msats are distinct from fiat (e.g. XOF).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Auth.js adapter models (+ local credentials) ───────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime? @map("email_verified")
+  image         String?
+  /// bcrypt hash — never return in API responses
+  passwordHash  String?   @map("password_hash")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  accounts    Account[]
+  sessions    Session[]
+  memberships MerchantMembership[]
+  auditEvents AuditEvent[]         @relation("AuditActor")
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String  @map("user_id")
+  type              String
+  provider          String
+  providerAccountId String  @map("provider_account_id")
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique @map("session_token")
+  userId       String   @map("user_id")
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+// ─── Merchant domain ────────────────────────────────────────────────────────
+
+enum MembershipRole {
+  OWNER
+  MEMBER
+}
+
+enum MerchantStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum RecordStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum SaleStatus {
+  DRAFT
+  PENDING
+  FINALIZED
+  CANCELLED
+}
+
+/// Derived settlement posture for a finalized sale (independent of SaleStatus).
+enum SalePaymentState {
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+}
+
+enum PaymentStatus {
+  PENDING
+  SETTLED
+  EXPIRED
+  FAILED
+  CANCELLED
+  UNKNOWN
+}
+
+enum PaymentMethod {
+  LIGHTNING
+  CASH
+  CREDIT
+}
+
+enum PaymentKind {
+  SALE_PAYMENT
+  CUSTOMER_REPAYMENT
+  REFUND
+}
+
+enum LedgerEntryType {
+  DEBIT
+  CREDIT
+  ADJUSTMENT
+}
+
+enum WalletProvider {
+  NWC
+}
+
+enum WalletConnectionStatus {
+  CONNECTED
+  DISCONNECTED
+  UNKNOWN
+  ERROR
+}
+
+model Merchant {
+  id              String         @id @default(cuid())
+  name            String
+  /// ISO 4217 fiat bookkeeping currency (e.g. XOF). Distinct from sats.
+  displayCurrency String         @default("XOF") @map("display_currency")
+  locale          String         @default("en")
+  city            String?
+  phone           String?
+  status          MerchantStatus @default(ACTIVE)
+  /// Explicit opt-in before any receipt attestation is published to a public relay.
+  nostrPublishOptIn Boolean      @default(false) @map("nostr_publish_opt_in")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  memberships       MerchantMembership[]
+  products          Product[]
+  customers         Customer[]
+  sales             Sale[]
+  payments          Payment[]
+  expenses          Expense[]
+  ledgerEntries     CustomerLedgerEntry[]
+  walletConnections WalletConnection[]
+  auditEvents       AuditEvent[]
+  signingIdentity   MerchantSigningIdentity?
+  receipts          Receipt[]
+
+  @@index([status])
+  @@map("merchants")
+}
+
+model MerchantMembership {
+  id         String         @id @default(cuid())
+  userId     String         @map("user_id")
+  merchantId String         @map("merchant_id")
+  role       MembershipRole @default(OWNER)
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, merchantId])
+  @@index([merchantId])
+  @@index([userId])
+  @@map("merchant_memberships")
+}
+
+model Product {
+  id             String       @id @default(cuid())
+  merchantId     String       @map("merchant_id")
+  name           String
+  /// Unit price in fiat minor units (XOF whole units = minor units).
+  unitPriceMinor Int          @map("unit_price_minor")
+  currency       String       @default("XOF")
+  category       String?
+  /// When true, stockOnHand is maintained on sales.
+  trackStock     Boolean      @default(false) @map("track_stock")
+  /// Integer units on hand; null when stock is not tracked.
+  stockOnHand    Int?         @map("stock_on_hand")
+  active         Boolean      @default(true)
+  status         RecordStatus @default(ACTIVE)
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  merchant  Merchant   @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  saleItems SaleItem[]
+
+  @@index([merchantId, status])
+  @@index([merchantId, active])
+  @@map("products")
+}
+
+model Customer {
+  id         String       @id @default(cuid())
+  merchantId String       @map("merchant_id")
+  name       String
+  phone      String?
+  status     RecordStatus @default(ACTIVE)
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
+
+  merchant      Merchant              @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  sales         Sale[]
+  payments      Payment[]
+  ledgerEntries CustomerLedgerEntry[]
+
+  @@index([merchantId, status])
+  @@index([merchantId, name])
+  @@map("customers")
+}
+
+model Sale {
+  id              String           @id @default(cuid())
+  merchantId      String           @map("merchant_id")
+  customerId      String?          @map("customer_id")
+  status          SaleStatus       @default(DRAFT)
+  /// Settlement posture — updated only via payment transactions, never by rewriting lines.
+  paymentState    SalePaymentState @default(UNPAID) @map("payment_state")
+  currency        String           @default("XOF")
+  /// Sum of line totals in fiat minor units. Immutable after FINALIZED.
+  totalMinor      Int              @default(0) @map("total_minor")
+  /// Cached sum of SETTLED SALE_PAYMENT/REFUND effects; maintained in the same DB transaction.
+  amountPaidMinor Int              @default(0) @map("amount_paid_minor")
+  paymentMethod   PaymentMethod?   @map("payment_method")
+  idempotencyKey  String?          @unique @map("idempotency_key")
+  notes           String?
+  finalizedAt     DateTime?        @map("finalized_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+
+  merchant      Merchant              @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  customer      Customer?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  items         SaleItem[]
+  payments      Payment[]
+  ledgerEntries CustomerLedgerEntry[]
+  receipt       Receipt?
+
+  @@index([merchantId, status])
+  @@index([merchantId, paymentState])
+  @@index([merchantId, createdAt])
+  @@index([customerId])
+  @@map("sales")
+}
+
+model SaleItem {
+  id             String @id @default(cuid())
+  saleId         String @map("sale_id")
+  productId      String? @map("product_id")
+  productName    String @map("product_name")
+  quantity       Int
+  unitPriceMinor Int    @map("unit_price_minor")
+  lineTotalMinor Int    @map("line_total_minor")
+  currency       String @default("XOF")
+
+  sale    Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([saleId])
+  @@index([productId])
+  @@map("sale_items")
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  merchantId      String        @map("merchant_id")
+  saleId          String?       @map("sale_id")
+  customerId      String?       @map("customer_id")
+  /// Independent of Sale.status
+  status          PaymentStatus @default(PENDING)
+  kind            PaymentKind   @default(SALE_PAYMENT)
+  method          PaymentMethod
+  description     String?
+  /// Fiat bookkeeping amount in minor units (nullable for pure Lightning rows).
+  amountFiatMinor Int?          @map("amount_fiat_minor")
+  fiatCurrency    String?       @map("fiat_currency")
+  /// Lightning amounts — integers only; distinct from fiat / XOF.
+  amountSats      Int?          @map("amount_sats")
+  amountMsats     BigInt?       @map("amount_msats")
+  /// Expected invoice amount in msats (for settlement verification).
+  expectedAmountMsats BigInt?   @map("expected_amount_msats")
+  /// BOLT11 invoice string (safe to show to the payer; not a wallet secret).
+  bolt11          String?       @map("bolt11") @db.Text
+  /// External Lightning payment hash (unique when present).
+  paymentHash     String?       @unique @map("payment_hash")
+  expiresAt       DateTime?     @map("expires_at")
+  lastLookupAt    DateTime?     @map("last_lookup_at")
+  idempotencyKey  String?       @unique @map("idempotency_key")
+  settledAt       DateTime?     @map("settled_at")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  merchant      Merchant              @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  sale          Sale?                 @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  customer      Customer?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  ledgerEntries CustomerLedgerEntry[]
+
+  @@index([merchantId, status])
+  @@index([merchantId, kind])
+  @@index([merchantId, createdAt])
+  @@index([saleId])
+  @@map("payments")
+}
+
+model Expense {
+  id          String       @id @default(cuid())
+  merchantId  String       @map("merchant_id")
+  category    String
+  description String
+  amountMinor Int          @map("amount_minor")
+  currency    String       @default("XOF")
+  /// Business date of the expense (may differ from createdAt).
+  occurredOn  DateTime     @default(now()) @map("occurred_on")
+  status      RecordStatus @default(ACTIVE)
+  idempotencyKey String?   @unique @map("idempotency_key")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId, occurredOn])
+  @@index([merchantId, createdAt])
+  @@index([merchantId, status])
+  @@map("expenses")
+}
+
+/// Immutable finalized money movements affecting customer balances.
+model CustomerLedgerEntry {
+  id              String          @id @default(cuid())
+  merchantId      String          @map("merchant_id")
+  customerId      String          @map("customer_id")
+  entryType       LedgerEntryType @map("entry_type")
+  /// Positive integer magnitude in fiat minor units.
+  amountMinor     Int             @map("amount_minor")
+  currency        String          @default("XOF")
+  relatedSaleId   String?         @map("related_sale_id")
+  relatedPaymentId String?        @map("related_payment_id")
+  note            String?
+  /// Set once at creation — no amount updates after insert (enforced in app).
+  createdAt       DateTime        @default(now()) @map("created_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  sale     Sale?    @relation(fields: [relatedSaleId], references: [id], onDelete: SetNull)
+  payment  Payment? @relation(fields: [relatedPaymentId], references: [id], onDelete: SetNull)
+
+  @@index([merchantId, customerId, createdAt])
+  @@index([relatedSaleId])
+  @@index([relatedPaymentId])
+  @@map("customer_ledger_entries")
+}
+
+/// Server-managed Nostr signing identity for receipt attestations.
+/// Secret key is AES-GCM encrypted at rest. Merchants never paste an nsec.
+model MerchantSigningIdentity {
+  id                   String   @id @default(cuid())
+  merchantId           String   @unique @map("merchant_id")
+  /// Hex public key (32-byte x-only / Nostr pubkey).
+  pubkeyHex            String   @map("pubkey_hex")
+  encryptedSecret      String   @map("encrypted_secret") @db.Text
+  encryptionIv         String   @map("encryption_iv")
+  encryptionTag        String   @map("encryption_tag")
+  encryptionKeyVersion Int      @default(1) @map("encryption_key_version")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@map("merchant_signing_identities")
+}
+
+/// Cryptographically signed digital receipt. Full detail is private; public links use accessToken.
+model Receipt {
+  id              String   @id @default(cuid())
+  /// Random public identifier (safe to put on relays / QR metadata).
+  publicId        String   @unique @map("public_id")
+  /// Unguessable bearer token for the customer receipt URL.
+  accessToken     String   @unique @map("access_token")
+  merchantId      String   @map("merchant_id")
+  saleId          String   @unique @map("sale_id")
+  /// Canonical JSON (no customer PII / no NWC). Private storage.
+  canonicalJson   String   @map("canonical_json") @db.Text
+  /// SHA-256 hex of canonical JSON (UTF-8).
+  integrityHash   String   @map("integrity_hash")
+  /// Merchant Nostr pubkey that signed the attestation event.
+  pubkeyHex       String   @map("pubkey_hex")
+  /// Minimal NIP-01 event JSON (content = integrity hash only).
+  signedEventJson String   @map("signed_event_json") @db.Text
+  eventId         String   @map("event_id")
+  currency        String
+  totalMinor      Int      @map("total_minor")
+  /// Snapshot at issuance — live payment status is read from Sale/Payment.
+  issuedAt        DateTime @map("issued_at")
+  publishedToRelay Boolean @default(false) @map("published_to_relay")
+  publishedAt     DateTime? @map("published_at")
+  publishedRelay  String?  @map("published_relay")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  sale     Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([merchantId, createdAt])
+  @@index([eventId])
+  @@map("receipts")
+}
+
+model WalletConnection {
+  id                 String                 @id @default(cuid())
+  merchantId         String                 @map("merchant_id")
+  provider           WalletProvider         @default(NWC)
+  label              String?
+  status             WalletConnectionStatus @default(UNKNOWN)
+  /// Verified NIP-47 methods from get_info / info event (never secrets).
+  capabilities       Json                   @default("[]")
+  network            String?
+  lud16              String?
+  /// True when the connection also advertises pay_invoice (prefer receive-only).
+  includesPayInvoice Boolean                @default(false) @map("includes_pay_invoice")
+  /// AES-256-GCM ciphertext (base64). Never expose via API DTOs.
+  encryptedPayload   String                 @map("encrypted_payload") @db.Text
+  /// IV / nonce (base64)
+  encryptionIv       String                 @map("encryption_iv")
+  /// Auth tag (base64)
+  encryptionTag      String                 @map("encryption_tag")
+  /// Key version for rotation of WALLET_ENCRYPTION_KEY
+  encryptionKeyVersion Int                  @default(1) @map("encryption_key_version")
+  lastCheckedAt      DateTime?              @map("last_checked_at")
+  createdAt          DateTime               @default(now()) @map("created_at")
+  updatedAt          DateTime               @updatedAt @map("updated_at")
+
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@unique([merchantId])
+  @@index([merchantId, status])
+  @@map("wallet_connections")
+}
+
+model AuditEvent {
+  id           String   @id @default(cuid())
+  merchantId   String?  @map("merchant_id")
+  actorUserId  String?  @map("actor_user_id")
+  action       String
+  resourceType String   @map("resource_type")
+  resourceId   String?  @map("resource_id")
+  /// Non-secret metadata only — never store credentials here
+  metadata     Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  merchant Merchant? @relation(fields: [merchantId], references: [id], onDelete: SetNull)
+  actor    User?     @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([merchantId, createdAt])
+  @@index([actorUserId, createdAt])
+  @@index([resourceType, resourceId])
+  @@map("audit_events")
+}

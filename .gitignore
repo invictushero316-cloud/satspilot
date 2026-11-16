@@ -1,0 +1,87 @@
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+/playwright-report
+/test-results
+/blob-report
+/playwright/.cache
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+/dist
+
+# misc
+.DS_Store
+Thumbs.db
+*.pem
+*.p12
+*.key
+*.crt
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# local verification / audit scratch (not documentation)
+docs/_*
+
+# env & secrets — keep examples; ignore real local secrets
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+!.env.example
+
+# wallet / lightning / nostr secrets (never commit)
+*.nwc
+*.connection
+nwc-secrets/
+secrets/
+credentials/
+*.seed
+*.mnemonic
+
+# vercel / deploy
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# Keep compiled Tailwind CSS in repo for reliable webpack builds on Windows.
+# Source of truth remains src/app/globals.css (rebuild with npm run css:build).
+
+# prisma
+prisma/*.db
+prisma/*.db-journal
+
+# IDE / editor
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+
+# OS / local artifacts
+*.log
+tmp/
+temp/
+.cache/
