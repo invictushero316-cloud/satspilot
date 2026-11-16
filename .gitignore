@@ -39,6 +39,8 @@ yarn-error.log*
 
 # local verification / audit scratch (not documentation)
 docs/_*
+.tmp-*
+.vercel-oob-code.tmp
 
 # env & secrets — keep examples; ignore real local secrets
 .env

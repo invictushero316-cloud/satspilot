@@ -10,7 +10,9 @@
     "dev": "next dev",
     "css:build": "npx @tailwindcss/cli@4.3.5 -i ./src/app/globals.css -o ./src/app/satspilot.css --minify",
     "prebuild": "npm run css:build",
-    "build": "next build --webpack",
+    "postinstall": "prisma generate",
+    "build": "prisma generate && next build --webpack",
+    "vercel-build": "prisma generate && next build --webpack",
     "start": "next start",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -63,6 +65,7 @@
     "tailwindcss": "4.3.5",
     "tsx": "^4.20.5",
     "typescript": "^5",
+    "vercel": "^39.4.2",
     "vitest": "^3.2.4"
   },
   "overrides": {
